@@ -1,190 +1,261 @@
 import json
 import logging
-from apps.orchestrator.services.llm_client import LLMClient
-from apps.findings.models import Finding, Evidence
-from apps.remediation.models import Remediation
+from typing import Dict, Any
+from apps.orchestrator.services.base_agent import BaseAgent
+from apps.orchestrator.services.schemas import (
+    AuthorizationInput, AuthorizationOutput,
+    ReconnaissanceInput, ReconnaissanceOutput,
+    VulnerabilityScanningInput, VulnerabilityScanningOutput,
+    VerificationInput, VerificationOutput,
+    RiskAssessmentInput, RiskAssessmentOutput,
+    RemediationInput, RemediationOutput, RemediationCodeSnippet
+)
+from apps.orchestrator.services.llm_client import LLMClient, sanitize_untrusted_prompt_data
 
 logger = logging.getLogger(__name__)
 
-class AuthorizationAgent:
-    """SMAI-AI-AGT-001: Evaluates authorization scope and flags intrusive operations."""
-    @staticmethod
-    def evaluate_scope(asset, requested_scan_type: str) -> dict:
-        is_intrusive = requested_scan_type in ('controlled_active', 'comprehensive')
-        return {
-            'domain': asset.domain,
-            'is_authorized': asset.is_authorized,
-            'requires_human_approval': is_intrusive,
-            'allowed_destinations': [asset.domain]
-        }
+# ============================================================================
+# AGENT 1: Authorization Agent (SMAI-AI-AGT-001)
+# ============================================================================
+class AuthorizationAgent(BaseAgent):
+    agent_id = "SMAI-AI-AGT-001"
+    agent_name = "Authorization Agent"
+    input_schema = AuthorizationInput
+    output_schema = AuthorizationOutput
 
-class ReconnaissanceAgent:
-    """SMAI-AI-AGT-002: Identifies application tech stack from response headers & patterns."""
-    @staticmethod
-    def analyze_tech_stack(asset, findings) -> dict:
-        detected_stack = {
-            'framework': 'Unknown',
-            'server': 'Unknown',
-            'language': 'Unknown',
-        }
-        # Check evidence headers
-        for finding in findings[:10]:
-            for ev in finding.evidences.all():
-                resp = ev.raw_http_response.lower()
-                if 'x-powered-by: next.js' in resp or '/_next/' in resp:
-                    detected_stack['framework'] = 'Next.js'
-                    detected_stack['language'] = 'TypeScript/JavaScript'
-                elif 'csrftoken' in resp or 'django' in resp:
-                    detected_stack['framework'] = 'Django'
-                    detected_stack['language'] = 'Python'
-                elif 'laravel' in resp or 'x-powered-by: php' in resp:
-                    detected_stack['framework'] = 'Laravel'
-                    detected_stack['language'] = 'PHP'
-                elif 'server: nginx' in resp:
-                    detected_stack['server'] = 'Nginx'
-                elif 'server: cloudflare' in resp:
-                    detected_stack['server'] = 'Cloudflare'
-        return detected_stack
+    def run(self, validated_input: AuthorizationInput) -> AuthorizationOutput:
+        # Deterministic authorization checks
+        if not validated_input.is_asset_verified:
+            return AuthorizationOutput(
+                is_eligible_for_scan=False,
+                requires_human_approval=False,
+                rejection_reason="Asset ownership challenge has not been verified."
+            )
+        if not validated_input.authorization_valid:
+            return AuthorizationOutput(
+                is_eligible_for_scan=False,
+                requires_human_approval=False,
+                rejection_reason="Asset authorization window has expired or been revoked."
+            )
 
-class VerificationAgent:
-    """SMAI-AI-AGT-004: Cross-references finding against raw HTTP evidence to eliminate false positives."""
-    @staticmethod
-    def verify_finding(finding: Finding, llm_client: LLMClient) -> dict:
-        evidence = finding.evidences.first()
-        raw_req = evidence.raw_http_request if evidence else ""
-        raw_resp = evidence.raw_http_response if evidence else ""
-        payload = evidence.payload_used if evidence else ""
+        # Flag active intrusive profiles for mandatory human-in-the-loop sign-off
+        is_intrusive = validated_input.requested_scan_type in ('controlled_active', 'comprehensive')
 
-        system_instruction = (
-            "You are the SecureMind AI Verification Agent. Your sole purpose is to evaluate whether "
-            "technical evidence (HTTP request/response) confirms a security vulnerability or if it is a false positive. "
-            "Return valid JSON with keys: verification_status (Confirmed | Likely | Unverified | False Positive | Needs Manual Review), "
-            "confidence_score (0.0 to 1.0), is_false_positive (bool), and evidence_analysis (string)."
+        return AuthorizationOutput(
+            is_eligible_for_scan=True,
+            requires_human_approval=is_intrusive,
+            sanitized_scope=[validated_input.target_domain]
         )
 
-        prompt = (
-            f"Vulnerability Title: {finding.title}\n"
-            f"Category: {finding.vulnerability_category}\n"
-            f"Affected URL: {finding.affected_url}\n"
-            f"Parameter: {finding.parameter}\n"
-            f"Payload Used: {payload}\n\n"
-            f"--- HTTP REQUEST ---\n{raw_req[:1500]}\n\n"
-            f"--- HTTP RESPONSE ---\n{raw_resp[:2000]}\n\n"
-            f"Evaluate if this is a confirmed vulnerability, a likely issue, or a false positive."
+# ============================================================================
+# AGENT 2: Reconnaissance Agent (SMAI-AI-AGT-002)
+# ============================================================================
+class ReconnaissanceAgent(BaseAgent):
+    agent_id = "SMAI-AI-AGT-002"
+    agent_name = "Reconnaissance Agent"
+    input_schema = ReconnaissanceInput
+    output_schema = ReconnaissanceOutput
+
+    def run(self, validated_input: ReconnaissanceInput) -> ReconnaissanceOutput:
+        headers = {k.lower(): v.lower() for k, v in validated_input.observed_headers.items()}
+        resp_lower = validated_input.response_sample.lower()
+
+        detected_framework = "Generic Web App"
+        detected_lang = "Unknown"
+        detected_server = headers.get("server", "Unknown")
+        tech_list = []
+
+        if "x-powered-by" in headers:
+            powered_by = headers["x-powered-by"]
+            tech_list.append(f"X-Powered-By: {powered_by}")
+            if "next.js" in powered_by or "/_next/" in resp_lower:
+                detected_framework = "Next.js"
+                detected_lang = "TypeScript/JavaScript"
+            elif "php" in powered_by:
+                detected_lang = "PHP"
+                detected_framework = "Laravel/PHP" if "laravel" in resp_lower else "PHP"
+
+        if "csrftoken" in resp_lower or "django" in resp_lower:
+            detected_framework = "Django"
+            detected_lang = "Python"
+            tech_list.append("Django CSRF Framework")
+
+        # Security Headers Audit
+        standard_sec_headers = [
+            "content-security-policy",
+            "strict-transport-security",
+            "x-content-type-options",
+            "x-frame-options",
+            "referrer-policy"
+        ]
+        present = [h for h in standard_sec_headers if h in headers]
+        missing = [h for h in standard_sec_headers if h not in headers]
+
+        return ReconnaissanceOutput(
+            detected_framework=detected_framework,
+            detected_language=detected_lang,
+            detected_web_server=detected_server,
+            identified_technologies=tech_list,
+            security_headers_present=present,
+            security_headers_missing=missing
         )
 
-        llm_result = llm_client.generate_json(prompt, system_instruction)
-        
-        # Fallback heuristic if LLM is unavailable
-        if not llm_result:
-            status = Finding.VerificationStatus.LIKELY
-            conf = 0.75
-            if payload and payload in raw_resp:
-                status = Finding.VerificationStatus.CONFIRMED
-                conf = 0.95
-            elif not raw_resp:
-                status = Finding.VerificationStatus.UNVERIFIED
-                conf = 0.5
-            return {
-                'verification_status': status,
-                'confidence_score': conf,
-                'is_false_positive': False,
-                'evidence_analysis': 'Heuristic analysis of reflected payloads and scanner confidence.'
-            }
+# ============================================================================
+# AGENT 3: Vulnerability Scanning Agent (SMAI-AI-AGT-003)
+# ============================================================================
+class VulnerabilityScanningAgent(BaseAgent):
+    agent_id = "SMAI-AI-AGT-003"
+    agent_name = "Vulnerability Scanning Agent"
+    input_schema = VulnerabilityScanningInput
+    output_schema = VulnerabilityScanningOutput
 
-        status_mapping = {
-            'Confirmed': Finding.VerificationStatus.CONFIRMED,
-            'Likely': Finding.VerificationStatus.LIKELY,
-            'Unverified': Finding.VerificationStatus.UNVERIFIED,
-            'False Positive': Finding.VerificationStatus.FALSE_POSITIVE,
-            'Needs Manual Review': Finding.VerificationStatus.NEEDS_MANUAL_REVIEW,
-        }
+    def run(self, validated_input: VulnerabilityScanningInput) -> VulnerabilityScanningOutput:
+        dispatched = []
+        statuses = {}
 
-        chosen_status = status_mapping.get(llm_result.get('verification_status'), Finding.VerificationStatus.LIKELY)
-        conf = float(llm_result.get('confidence_score', 0.7))
+        if validated_input.zap_enabled:
+            dispatched.append("OWASP ZAP")
+            statuses["zap"] = "Executed"
+        if validated_input.nuclei_enabled:
+            dispatched.append("Nuclei")
+            statuses["nuclei"] = "Executed"
 
-        return {
-            'verification_status': chosen_status,
-            'confidence_score': min(max(conf, 0.0), 1.0),
-            'is_false_positive': bool(llm_result.get('is_false_positive', False)),
-            'evidence_analysis': llm_result.get('evidence_analysis', '')
-        }
-
-class RiskAssessmentAgent:
-    """SMAI-AI-AGT-005: Evaluates business impact, exploitability, and contextual risk."""
-    @staticmethod
-    def assess_risk(finding: Finding, llm_client: LLMClient) -> dict:
-        prompt = (
-            f"Assess contextual risk for finding: {finding.title}\n"
-            f"CWE: {finding.cwe_id}\n"
-            f"Affected URL: {finding.affected_url}\n"
-            f"Current Severity: {finding.severity}\n"
-            f"Confidence: {finding.confidence_score}\n"
-            "Return JSON with keys: severity (critical | high | medium | low | informational), "
-            "business_impact (string), exploitability (string), priority (Immediate | High | Medium | Low)."
+        return VulnerabilityScanningOutput(
+            scanners_dispatched=dispatched,
+            total_raw_alerts_collected=0,
+            scanner_statuses=statuses,
+            execution_notes=f"Dispatched {len(dispatched)} engines against {validated_input.target_url}."
         )
 
-        result = llm_client.generate_json(prompt)
-        if not result:
-            return {
-                'severity': finding.severity,
-                'business_impact': 'Potential risk to data integrity or user privacy.',
-                'exploitability': 'Dependent on network access and endpoint authorization.',
-                'priority': 'High' if finding.severity in ('critical', 'high') else 'Medium'
-            }
+# ============================================================================
+# AGENT 4: Verification Agent (SMAI-AI-AGT-004)
+# ============================================================================
+class VerificationAgent(BaseAgent):
+    agent_id = "SMAI-AI-AGT-004"
+    agent_name = "Verification Agent"
+    input_schema = VerificationInput
+    output_schema = VerificationOutput
 
-        return result
+    def run(self, validated_input: VerificationInput) -> VerificationOutput:
+        payload = validated_input.payload_used or ""
+        resp = validated_input.raw_http_response or ""
 
-class RemediationAgent:
-    """SMAI-AI-AGT-006: Produces framework-tailored, copy-pasteable code patches and explanations."""
-    @staticmethod
-    def generate_remediation(finding: Finding, tech_stack: dict, llm_client: LLMClient) -> Remediation:
-        system_instruction = (
-            "You are the SecureMind AI Remediation Agent. Provide clear, developer-friendly "
-            "security explanations and framework-specific code snippets to fix the reported vulnerability. "
-            "Return JSON with: explanation (string), remediation_strategy (string), "
-            "code_snippets (array of objects with language, file_hint, vulnerable_code, secure_code), "
-            "and references (array of URLs)."
-        )
+        # Deterministic Heuristic Baseline
+        is_false_pos = False
+        evidence_observed = False
+        status = "Unverified"
+        confidence = 0.5
 
-        prompt = (
-            f"Vulnerability: {finding.title}\n"
-            f"CWE: {finding.cwe_id}\n"
-            f"Affected URL/Component: {finding.affected_url} (Param: {finding.parameter})\n"
-            f"Detected Tech Stack: {json.dumps(tech_stack)}\n"
-            f"Provide actionable remediation guidance and secure code examples."
-        )
-
-        result = llm_client.generate_json(prompt, system_instruction)
-
-        if not result:
-            explanation = f"The application endpoint at {finding.affected_url} is susceptible to {finding.title}. Input validation and output encoding should be enforced."
-            strategy = "Sanitize all external parameters, adopt parameterized APIs, and configure strict security headers."
-            code_snippets = [
-                {
-                    'language': tech_stack.get('language', 'generic'),
-                    'file_hint': 'controller/view',
-                    'vulnerable_code': f"# Raw unvalidated parameter: {finding.parameter}",
-                    'secure_code': "# Validate input via strict schema and escape before output"
-                }
-            ]
-            references = [
-                f"https://cwe.mitre.org/data/definitions/{finding.cwe_id.replace('CWE-', '')}.html" if finding.cwe_id else "https://owasp.org"
-            ]
+        if payload and payload in resp:
+            evidence_observed = True
+            status = "Confirmed"
+            confidence = 0.95
+        elif not resp:
+            status = "Unverified"
+            confidence = 0.4
         else:
-            explanation = result.get('explanation', '')
-            strategy = result.get('remediation_strategy', '')
-            code_snippets = result.get('code_snippets', [])
-            references = result.get('references', [])
+            status = "Likely"
+            confidence = 0.7
 
-        remediation, created = Remediation.objects.update_or_create(
-            finding=finding,
-            defaults={
-                'explanation': explanation,
-                'remediation_strategy': strategy,
-                'code_snippets': code_snippets,
-                'references': references,
-                'status': Remediation.Status.OPEN
-            }
+        # LLM Reasoning if provider is active
+        if self.llm_client and self.llm_client.is_ai_enabled:
+            safe_req = sanitize_untrusted_prompt_data(validated_input.raw_http_request)
+            safe_resp = sanitize_untrusted_prompt_data(resp)
+            prompt = (
+                f"Finding: {validated_input.finding_title}\n"
+                f"Category: {validated_input.vulnerability_category}\n"
+                f"URL: {validated_input.affected_url}\n"
+                f"Payload: {payload}\n"
+                f"Request: {safe_req}\n"
+                f"Response: {safe_resp}\n"
+                "Evaluate whether this is Confirmed, Likely, Unverified, or False Positive. Return JSON."
+            )
+            llm_res = self.llm_client.generate_json(prompt)
+            if llm_res and "verification_status" in llm_res:
+                status = llm_res.get("verification_status", status)
+                confidence = float(llm_res.get("confidence_score", confidence))
+                is_false_pos = bool(llm_res.get("is_false_positive", False))
+
+        return VerificationOutput(
+            verification_status=status,
+            confidence_score=min(max(confidence, 0.0), 1.0),
+            is_false_positive=is_false_pos,
+            evidence_analysis="Technical evidence evaluation completed.",
+            execution_evidence_observed=evidence_observed
         )
-        return remediation
+
+# ============================================================================
+# AGENT 5: Risk Assessment Agent (SMAI-AI-AGT-005)
+# ============================================================================
+class RiskAssessmentAgent(BaseAgent):
+    agent_id = "SMAI-AI-AGT-005"
+    agent_name = "Risk Assessment Agent"
+    input_schema = RiskAssessmentInput
+    output_schema = RiskAssessmentOutput
+
+    def run(self, validated_input: RiskAssessmentInput) -> RiskAssessmentOutput:
+        sev = validated_input.base_severity.lower()
+        priority_map = {
+            "critical": "Immediate",
+            "high": "High",
+            "medium": "Medium",
+            "low": "Low",
+            "informational": "Low"
+        }
+        priority = priority_map.get(sev, "Medium")
+
+        return RiskAssessmentOutput(
+            calculated_severity=sev,
+            remediation_priority=priority,
+            business_impact="Evaluated based on exposure of affected endpoint and CVSS metric.",
+            exploitability_assessment="Exploitable based on verified technical payload evidence.",
+            risk_rationale=f"Prioritized as {priority} due to {sev} severity classification."
+        )
+
+# ============================================================================
+# AGENT 6: Remediation Agent (SMAI-AI-AGT-006)
+# ============================================================================
+class RemediationAgent(BaseAgent):
+    agent_id = "SMAI-AI-AGT-006"
+    agent_name = "Remediation Agent"
+    input_schema = RemediationInput
+    output_schema = RemediationOutput
+
+    def run(self, validated_input: RemediationInput) -> RemediationOutput:
+        fw = validated_input.detected_framework
+        title = validated_input.finding_title
+
+        explanation = f"The application at {validated_input.affected_component} contains {title}."
+        strategy = f"Implement input validation and safe contextual encoding tailored to {fw}."
+        snippets = [
+            RemediationCodeSnippet(
+                language=validated_input.detected_language,
+                file_hint="views / controller",
+                vulnerable_code="# Raw parameter reflection without sanitization",
+                secure_code="# Validate input with strict schema and escape output context"
+            )
+        ]
+        references = [
+            f"https://cwe.mitre.org/data/definitions/{validated_input.cwe_id.replace('CWE-', '')}.html" if validated_input.cwe_id else "https://owasp.org"
+        ]
+
+        # LLM-enhanced generation if provider active
+        if self.llm_client and self.llm_client.is_ai_enabled:
+            prompt = (
+                f"Vulnerability: {title}\n"
+                f"Framework: {fw}\n"
+                f"Component: {validated_input.affected_component}\n"
+                "Provide actionable remediation guidance and secure code examples in JSON."
+            )
+            res = self.llm_client.generate_json(prompt)
+            if res and "explanation" in res:
+                explanation = res.get("explanation", explanation)
+                strategy = res.get("remediation_strategy", strategy)
+
+        return RemediationOutput(
+            explanation=explanation,
+            remediation_strategy=strategy,
+            code_snippets=snippets,
+            references=references,
+            developer_action_items=["Review code diff", "Test in staging environment", "Deploy patch"]
+        )

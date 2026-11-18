@@ -28,13 +28,24 @@ class OrchestratorEngine:
             defaults={'current_stage': 'reconnaissance'}
         )
 
+        recon_agent = ReconnaissanceAgent(llm_client)
+        verify_agent = VerificationAgent(llm_client)
+        risk_agent = RiskAssessmentAgent(llm_client)
+        remed_agent = RemediationAgent(llm_client)
+
         # 1. Reconnaissance Agent: Detect tech stack
         start_time = time.time()
-        tech_stack = ReconnaissanceAgent.analyze_tech_stack(scan.asset, findings)
+        recon_input = {
+            'target_domain': scan.asset.domain,
+            'base_url': scan.asset.base_url,
+            'observed_headers': {},
+            'response_sample': findings[0].evidences.first().raw_http_response if (findings and findings[0].evidences.exists()) else ""
+        }
+        tech_stack = recon_agent.execute(recon_input)
         cls._record_execution(
             scan=scan,
             agent_name=AgentExecution.AgentType.RECONNAISSANCE,
-            input_payload={'asset_domain': scan.asset.domain},
+            input_payload=recon_input,
             output_payload=tech_stack,
             duration=time.time() - start_time
         )
@@ -43,9 +54,20 @@ class OrchestratorEngine:
 
         # Process each finding through Verification, Risk Assessment, and Remediation
         for finding in findings:
+            evidence = finding.evidences.first()
+
             # 2. Verification Agent
             start_time = time.time()
-            v_res = VerificationAgent.verify_finding(finding, llm_client)
+            v_input = {
+                'finding_title': finding.title,
+                'vulnerability_category': finding.vulnerability_category or 'General',
+                'affected_url': finding.affected_url,
+                'parameter': finding.parameter,
+                'payload_used': evidence.payload_used if evidence else '',
+                'raw_http_request': evidence.raw_http_request if evidence else '',
+                'raw_http_response': evidence.raw_http_response if evidence else '',
+            }
+            v_res = verify_agent.execute(v_input)
             finding.verification_status = v_res['verification_status']
             finding.confidence_score = v_res['confidence_score']
             finding.save(update_fields=['verification_status', 'confidence_score'])
@@ -53,7 +75,7 @@ class OrchestratorEngine:
             cls._record_execution(
                 scan=scan,
                 agent_name=AgentExecution.AgentType.VERIFICATION,
-                input_payload={'finding_id': str(finding.id), 'title': finding.title},
+                input_payload=v_input,
                 output_payload=v_res,
                 duration=time.time() - start_time
             )
@@ -64,23 +86,52 @@ class OrchestratorEngine:
 
             # 3. Risk Assessment Agent
             start_time = time.time()
-            risk_res = RiskAssessmentAgent.assess_risk(finding, llm_client)
+            risk_input = {
+                'finding_title': finding.title,
+                'cwe_id': finding.cwe_id,
+                'cvss_score': finding.cvss_score,
+                'verification_status': finding.verification_status,
+                'confidence_score': finding.confidence_score,
+                'affected_url': finding.affected_url,
+                'base_severity': finding.severity,
+            }
+            risk_res = risk_agent.execute(risk_input)
             cls._record_execution(
                 scan=scan,
                 agent_name=AgentExecution.AgentType.RISK_ASSESSMENT,
-                input_payload={'finding_id': str(finding.id)},
+                input_payload=risk_input,
                 output_payload=risk_res,
                 duration=time.time() - start_time
             )
 
             # 4. Remediation Agent
             start_time = time.time()
-            rem = RemediationAgent.generate_remediation(finding, tech_stack, llm_client)
+            rem_input = {
+                'finding_title': finding.title,
+                'cwe_id': finding.cwe_id,
+                'affected_component': finding.affected_url,
+                'detected_framework': tech_stack.get('detected_framework', 'Generic'),
+                'detected_language': tech_stack.get('detected_language', 'Generic'),
+            }
+            rem_res = remed_agent.execute(rem_input)
+            
+            from apps.remediation.models import Remediation
+            Remediation.objects.update_or_create(
+                finding=finding,
+                defaults={
+                    'explanation': rem_res['explanation'],
+                    'remediation_strategy': rem_res['remediation_strategy'],
+                    'code_snippets': rem_res['code_snippets'],
+                    'references': rem_res['references'],
+                    'status': Remediation.Status.OPEN
+                }
+            )
+
             cls._record_execution(
                 scan=scan,
                 agent_name=AgentExecution.AgentType.REMEDIATION,
-                input_payload={'finding_id': str(finding.id), 'tech_stack': tech_stack},
-                output_payload={'remediation_id': str(rem.id)},
+                input_payload=rem_input,
+                output_payload=rem_res,
                 duration=time.time() - start_time
             )
 
