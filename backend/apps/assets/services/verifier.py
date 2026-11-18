@@ -52,16 +52,21 @@ class TargetSafetyValidator:
 
         for ip_str in resolved_ips:
             ip = ipaddress.ip_address(ip_str)
-            if ip.is_loopback:
+
+            # Check if this is an IPv4-mapped IPv6 address (e.g. ::ffff:127.0.0.1)
+            mapped_ip = getattr(ip, 'ipv4_mapped', None)
+            target_ip = mapped_ip if mapped_ip else ip
+
+            if target_ip.is_loopback:
                 raise SecurityScopeError(f"Target '{domain}' resolves to prohibited loopback address ({ip_str}).")
-            if ip.is_private:
+            if target_ip.is_private or ip.is_private:
                 raise SecurityScopeError(f"Target '{domain}' resolves to prohibited private network address ({ip_str}). SSRF protection active.")
-            if ip.is_link_local:
+            if target_ip.is_link_local or ip.is_link_local:
                 raise SecurityScopeError(f"Target '{domain}' resolves to link-local address ({ip_str}).")
-            if ip.is_reserved or ip.is_multicast:
+            if target_ip.is_reserved or target_ip.is_multicast or ip.is_reserved or ip.is_multicast:
                 raise SecurityScopeError(f"Target '{domain}' resolves to reserved/multicast address ({ip_str}).")
             # AWS / GCP / Azure Cloud Metadata Service
-            if str(ip) == "169.254.169.254":
+            if str(target_ip) == "169.254.169.254":
                 raise SecurityScopeError(f"Target '{domain}' resolves to cloud instance metadata endpoint ({ip_str}).")
 
 class AssetVerificationService:

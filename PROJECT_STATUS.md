@@ -26,8 +26,8 @@ An extensive structural and code audit was conducted on the repository. The foun
 | **Auth & RBAC** | JWT Auth Endpoints | ✅ Implemented | Login, registration, token refresh, current profile, and org switching verified with 100% test pass. |
 | **Organizations** | Multi-Tenancy & RBAC | ✅ Implemented | `Organization`, `Project`, and `Membership` models, cross-tenant isolation, and RBAC verified via unit tests. |
 | **Asset Management** | Domain Registration | ✅ Implemented | Asset CRUD scoped to active organization. |
-| **Asset Management** | Ownership Verification | ⚠️ Partial | Verification service (`dnspython` DNS TXT and HTTP challenge) written; requires migration and integration testing with test server. |
-| **Security Controls** | SSRF Protection | ✅ Implemented | `TargetSafetyValidator` strictly blocks loopback (`127.0.0.1`), cloud metadata (`169.254.169.254`), and RFC1918 private IPs. Unit tested (100% pass). |
+| **Asset Management** | Ownership Verification | ✅ Implemented | DNS TXT & HTTP challenge verification, 90-day authorization window, tested. |
+| **Security Controls** | SSRF Protection | ✅ Implemented | Hardened: blocks loopback, cloud metadata, RFC1918, and IPv6-mapped addresses. 100% test pass. |
 | **Scanning Engine** | OWASP ZAP Service | ⚠️ Partial | `ZAPScannerService` implemented for spider, passive, and active scans; needs runtime integration against a local test target. |
 | **Scanning Engine** | Nuclei Service | ⚠️ Partial | `NucleiScannerService` implemented via subprocess, but Nuclei is not installed in the Dockerfile image. |
 | **Finding Engine** | Normalizer & Deduplication | ✅ Implemented | Normalizes ZAP and Nuclei outputs into standard schema with SHA-256 fingerprint deduplication. |

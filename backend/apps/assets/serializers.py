@@ -36,6 +36,7 @@ class AuthorizationChallengeSerializer(serializers.ModelSerializer):
         return f"{obj.asset.base_url.rstrip('/')}{obj.verification_path}"
 
 class AssetSerializer(serializers.ModelSerializer):
+    domain = serializers.CharField(required=False)
     is_authorized = serializers.BooleanField(read_only=True)
     challenges = AuthorizationChallengeSerializer(many=True, read_only=True)
     scope_rules = ScopeRuleSerializer(many=True, read_only=True)
