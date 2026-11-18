@@ -1,7 +1,10 @@
 from rest_framework import viewsets, permissions, status
+from rest_framework.decorators import action
 from rest_framework.response import Response
+from django.http import HttpResponse, Http404
 from apps.reports.models import Report
 from apps.reports.serializers import ReportSerializer, GenerateReportSerializer
+from apps.reports.services.pdf_generator import SecurityReportPDFGenerator
 from apps.authentication.permissions import TenantObjectPermission
 from apps.audit.models import AuditLog
 
@@ -28,6 +31,13 @@ class ReportViewSet(viewsets.ModelViewSet):
             return GenerateReportSerializer
         return ReportSerializer
 
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(ReportSerializer(serializer.instance).data, status=status.HTTP_201_CREATED, headers=headers)
+
     def perform_create(self, serializer):
         user = self.request.user
         scan = serializer.validated_data['scan']
@@ -47,9 +57,20 @@ class ReportViewSet(viewsets.ModelViewSet):
         report = serializer.save(
             organization=scan.organization,
             generated_by=user,
-            status=Report.Status.COMPLETED,
+            status=Report.Status.GENERATING,
             metrics_summary=metrics
         )
+
+        # Generate actual PDF file
+        try:
+            pdf_content = SecurityReportPDFGenerator.generate_pdf_report(report)
+            report.pdf_file.save(f"report_{report.id}.pdf", pdf_content, save=False)
+            report.status = Report.Status.COMPLETED
+            report.save(update_fields=['pdf_file', 'status'])
+        except Exception as e:
+            report.status = Report.Status.FAILED
+            report.error_message = str(e)
+            report.save(update_fields=['status', 'error_message'])
 
         AuditLog.objects.create(
             organization=scan.organization,
@@ -59,3 +80,24 @@ class ReportViewSet(viewsets.ModelViewSet):
             target_id=str(report.id),
             details={'report_type': report.report_type, 'scan_id': str(scan.id)}
         )
+
+    @action(detail=True, methods=['get'])
+    def download(self, request, pk=None):
+        """Streams authorized PDF security assessment report."""
+        report = self.get_object()
+        if not report.pdf_file or not report.pdf_file.storage.exists(report.pdf_file.name):
+            # Regenerate if not stored
+            pdf_content = SecurityReportPDFGenerator.generate_pdf_report(report)
+            report.pdf_file.save(f"report_{report.id}.pdf", pdf_content, save=True)
+
+        response = HttpResponse(report.pdf_file.read(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="securemind_report_{report.scan.asset.domain}_{report.id}.pdf"'
+        
+        AuditLog.objects.create(
+            organization=report.organization,
+            actor=request.user,
+            action='report_downloaded',
+            target_type='Report',
+            target_id=str(report.id)
+        )
+        return response

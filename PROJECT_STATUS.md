@@ -35,7 +35,7 @@ An extensive structural and code audit was conducted on the repository. The foun
 | **AI Agents** | 6 Specialized Agents | ✅ Implemented | All 6 agents inherit from `BaseAgent` with strict Pydantic v2 input/output schemas. Tested (100% pass). |
 | **AI Integration** | LLM Provider Abstraction | ✅ Implemented | `LLMClient` with `GeminiLLMProvider` and `OfflineLLMProvider`. Prompt injection defense via data delimiters. |
 | **Remediation** | Remediation Tracking | ✅ Implemented | CRUD and developer status tracking (`Open`, `In Progress`, `Fixed`, `Accepted Risk`) implemented. |
-| **Reporting** | PDF Generation | ❌ Incomplete | Database record and summary metrics generated, but binary PDF rendering (via WeasyPrint/ReportLab) is not wired. |
+| **Reporting** | PDF Generation | ✅ Implemented | Audit-grade PDF generator built with ReportLab; includes executive metrics, finding details, evidence, and remediation diffs. Tested. |
 | **Audit Logging** | Security Audit Trail | ✅ Implemented | Models, views, and automated audit logging on sensitive endpoints implemented. |
 | **Frontend** | Layout & Design System | ✅ Implemented | Responsive Next.js 14, Tailwind CSS, Lucide Icons, and professional security dashboard aesthetics. |
 | **Frontend** | Real API Integration | ❌ Incomplete | UI views (`OverviewView`, `AssetsView`, `AssessmentsView`, `FindingsView`, `RemediationView`) currently render local state arrays; not yet connected to backend DRF endpoints via Axios/SWR. |
