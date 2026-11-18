@@ -1,12 +1,31 @@
 import ipaddress
 import socket
 import logging
-import requests
-import dns.resolver
-from django.utils import timezone
-from django.conf import settings
 from datetime import timedelta
-from apps.assets.models import Asset, AuthorizationChallenge
+
+try:
+    import requests
+except ImportError:
+    requests = None
+
+try:
+    from django.utils import timezone
+    from django.conf import settings
+    from apps.assets.models import Asset, AuthorizationChallenge
+    DJANGO_AVAILABLE = True
+except ImportError:
+    DJANGO_AVAILABLE = False
+    timezone = None
+    settings = None
+    Asset = None
+    AuthorizationChallenge = None
+
+try:
+    import dns.resolver
+    import dns.exception
+    DNS_AVAILABLE = True
+except ImportError:
+    DNS_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +40,7 @@ class TargetSafetyValidator:
     """
     @staticmethod
     def validate_target_safety(domain: str) -> None:
-        if getattr(settings, 'ALLOW_PRIVATE_IP_SCANS', False):
+        if settings and getattr(settings, 'ALLOW_PRIVATE_IP_SCANS', False):
             return  # Allowed for specific self-hosted enterprise internal testing
 
         try:
@@ -77,6 +96,9 @@ class AssetVerificationService:
 
     @staticmethod
     def _verify_dns(challenge: AuthorizationChallenge) -> tuple[bool, str]:
+        if not DNS_AVAILABLE:
+            return False, "DNS resolution engine (dnspython) is unavailable in current runtime."
+
         asset = challenge.asset
         expected_token = f"securemind-verify={challenge.token}"
         
