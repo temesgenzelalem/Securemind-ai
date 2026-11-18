@@ -1,5 +1,12 @@
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from apps.findings.views import FindingViewSet
 
 app_name = 'findings'
 
-urlpatterns = []
+router = DefaultRouter()
+router.register(r'', FindingViewSet, basename='finding')
+
+urlpatterns = [
+    path('', include(router.urls)),
+]
