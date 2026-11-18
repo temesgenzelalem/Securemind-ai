@@ -143,18 +143,18 @@ class VerificationAgent(BaseAgent):
         # Deterministic Heuristic Baseline
         is_false_pos = False
         evidence_observed = False
-        status = "Unverified"
+        status = "unverified"
         confidence = 0.5
 
         if payload and payload in resp:
             evidence_observed = True
-            status = "Confirmed"
+            status = "confirmed"
             confidence = 0.95
         elif not resp:
-            status = "Unverified"
+            status = "unverified"
             confidence = 0.4
         else:
-            status = "Likely"
+            status = "likely"
             confidence = 0.7
 
         # LLM Reasoning if provider is active
@@ -168,16 +168,16 @@ class VerificationAgent(BaseAgent):
                 f"Payload: {payload}\n"
                 f"Request: {safe_req}\n"
                 f"Response: {safe_resp}\n"
-                "Evaluate whether this is Confirmed, Likely, Unverified, or False Positive. Return JSON."
+                "Evaluate whether this is confirmed, likely, unverified, or false_positive. Return JSON."
             )
             llm_res = self.llm_client.generate_json(prompt)
             if llm_res and "verification_status" in llm_res:
-                status = llm_res.get("verification_status", status)
+                status = str(llm_res.get("verification_status", status)).lower().replace(" ", "_")
                 confidence = float(llm_res.get("confidence_score", confidence))
                 is_false_pos = bool(llm_res.get("is_false_positive", False))
 
         return VerificationOutput(
-            verification_status=status,
+            verification_status=status.lower(),
             confidence_score=min(max(confidence, 0.0), 1.0),
             is_false_positive=is_false_pos,
             evidence_analysis="Technical evidence evaluation completed.",

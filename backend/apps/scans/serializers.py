@@ -25,7 +25,8 @@ class ScanSerializer(serializers.ModelSerializer):
 class CreateScanSerializer(serializers.ModelSerializer):
     class Meta:
         model = Scan
-        fields = ('asset', 'scan_type', 'config_overrides')
+        fields = ('id', 'asset', 'scan_type', 'config_overrides', 'status', 'requires_approval', 'is_approved')
+        read_only_fields = ('id', 'status', 'requires_approval', 'is_approved')
 
     def validate_asset(self, asset):
         if not asset.is_authorized:

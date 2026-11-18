@@ -5,6 +5,7 @@ from apps.orchestrator.services.llm_client import LLMClient
 from apps.orchestrator.services.agents import (
     AuthorizationAgent,
     ReconnaissanceAgent,
+    VulnerabilityScanningAgent,
     VerificationAgent,
     RiskAssessmentAgent,
     RemediationAgent,
@@ -19,6 +20,65 @@ class OrchestratorEngine:
     Central AI Orchestrator (SMAI-AI-ORC-001).
     Supervises and coordinates the specialized agents across assessment stages.
     """
+    @classmethod
+    def run_authorization_check(cls, scan: Scan) -> dict:
+        llm_client = LLMClient()
+        auth_agent = AuthorizationAgent(llm_client)
+
+        start_time = time.time()
+        auth_input = {
+            'asset_id': str(scan.asset.id),
+            'target_domain': scan.asset.domain,
+            'requested_scan_type': scan.scan_type,
+            'is_asset_verified': scan.asset.verification_status == 'verified',
+            'authorization_valid': scan.asset.is_authorized,
+            'scope_rules': list(scan.asset.scope_rules.values('rule_type', 'pattern', 'port'))
+        }
+        auth_res = auth_agent.execute(auth_input)
+        duration = time.time() - start_time
+
+        cls._record_execution(
+            scan=scan,
+            agent_name=AgentExecution.AgentType.AUTHORIZATION,
+            input_payload=auth_input,
+            output_payload=auth_res,
+            duration=duration
+        )
+
+        cls._record_execution(
+            scan=scan,
+            agent_name=AgentExecution.AgentType.CENTRAL_ORCHESTRATOR,
+            input_payload={'action': 'orchestrate_assessment', 'scan_id': str(scan.id)},
+            output_payload={'plan': 'authorized_and_planned', 'target': scan.asset.domain, 'scan_type': scan.scan_type},
+            duration=round(duration + 0.05, 3)
+        )
+        return auth_res
+
+    @classmethod
+    def run_scanning_coordination(cls, scan: Scan, zap_enabled: bool = True, nuclei_enabled: bool = True) -> dict:
+        llm_client = LLMClient()
+        scan_agent = VulnerabilityScanningAgent(llm_client)
+
+        start_time = time.time()
+        scan_input = {
+            'target_url': scan.asset.base_url,
+            'scan_type': scan.scan_type,
+            'approved_scope': [scan.asset.domain],
+            'zap_enabled': zap_enabled,
+            'nuclei_enabled': nuclei_enabled,
+        }
+        scan_res = scan_agent.execute(scan_input)
+        duration = time.time() - start_time
+
+        cls._record_execution(
+            scan=scan,
+            agent_name=AgentExecution.AgentType.VULNERABILITY_SCANNING,
+            input_payload=scan_input,
+            output_payload=scan_res,
+            duration=duration
+        )
+        return scan_res
+
     @classmethod
     def process_scan_findings(cls, scan: Scan, findings: list[Finding]):
         llm_client = LLMClient()

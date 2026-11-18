@@ -75,7 +75,7 @@ class AgentArchitectureTests(TestCase):
             'raw_http_response': 'HTTP/1.1 200 OK\n\nSearch: <script>alert(1)</script>'
         }
         output = agent.execute(verify_input)
-        self.assertEqual(output['verification_status'], 'Confirmed')
+        self.assertEqual(output['verification_status'].lower(), 'confirmed')
         self.assertGreaterEqual(output['confidence_score'], 0.9)
         self.assertTrue(output['execution_evidence_observed'])
 

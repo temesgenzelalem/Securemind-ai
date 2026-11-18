@@ -43,6 +43,10 @@ def execute_assessment_workflow(self, scan_id: str):
     scan.save(update_fields=['status', 'started_at'])
 
     try:
+        # AI Orchestrator & Authorization Agent evaluation
+        OrchestratorEngine.run_authorization_check(scan)
+        OrchestratorEngine.run_scanning_coordination(scan, zap_enabled=True, nuclei_enabled=True)
+
         zap_service = ZAPScannerService()
         nuclei_service = NucleiScannerService()
 

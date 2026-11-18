@@ -20,6 +20,13 @@ class IsOrgAdmin(permissions.BasePermission):
             return True
         if request.user.role == User.Role.ORG_ADMIN:
             return True
+        if request.user.current_organization_id:
+            return Membership.objects.filter(
+                user=request.user,
+                organization_id=request.user.current_organization_id,
+                role=Membership.OrgRole.ADMIN,
+                is_active=True
+            ).exists()
         return False
 
     def has_object_permission(self, request, view, obj):
