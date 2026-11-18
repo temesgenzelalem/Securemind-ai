@@ -1,5 +1,5 @@
 from django.db import models
-from django.conf import settings
+from django.conf import settings as django_settings
 from apps.core.models import BaseModel
 
 class Organization(BaseModel):
@@ -18,7 +18,7 @@ class Organization(BaseModel):
     settings = models.JSONField(default=dict, blank=True)
     is_active = models.BooleanField(default=True)
     created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
+        django_settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         related_name='created_organizations'
@@ -60,7 +60,7 @@ class Membership(BaseModel):
         VIEWER = 'viewer', 'Viewer'
 
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
+        django_settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='memberships'
     )

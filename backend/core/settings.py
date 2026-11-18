@@ -78,17 +78,25 @@ WSGI_APPLICATION = 'core.wsgi.application'
 ASGI_APPLICATION = 'core.asgi.application'
 
 # Database
-# Default to PostgreSQL, with fallback for standalone tests
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('POSTGRES_DB', 'securemind_db'),
-        'USER': os.getenv('POSTGRES_USER', 'securemind_user'),
-        'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'securemind_password'),
-        'HOST': os.getenv('POSTGRES_HOST', 'localhost'),
-        'PORT': os.getenv('POSTGRES_PORT', '5432'),
+# Default to PostgreSQL, with fallback for local testing
+if os.getenv('USE_SQLITE', 'False').lower() in ('true', '1', 'yes'):
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('POSTGRES_DB', 'securemind_db'),
+            'USER': os.getenv('POSTGRES_USER', 'securemind_user'),
+            'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'securemind_password'),
+            'HOST': os.getenv('POSTGRES_HOST', 'localhost'),
+            'PORT': os.getenv('POSTGRES_PORT', '5432'),
+        }
+    }
 
 # Custom User Model
 AUTH_USER_MODEL = 'authentication.User'

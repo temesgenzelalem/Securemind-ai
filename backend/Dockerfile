@@ -9,9 +9,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
     curl \
+    unzip \
     netcat-openbsd \
     dnsutils \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Nuclei static binary for template-based vulnerability assessment
+RUN curl -sSL https://github.com/projectdiscovery/nuclei/releases/download/v3.3.5/nuclei_3.3.5_linux_amd64.zip -o /tmp/nuclei.zip \
+    && unzip /tmp/nuclei.zip -d /usr/local/bin nuclei \
+    && chmod +x /usr/local/bin/nuclei \
+    && rm /tmp/nuclei.zip \
+    && mkdir -p /app/nuclei-templates
 
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt

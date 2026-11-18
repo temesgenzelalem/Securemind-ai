@@ -68,7 +68,6 @@ services:
     command: celery -A core worker -l INFO -E
     volumes:
       - ./backend:/app
-      - /var/run/docker.sock:/var/run/docker.sock # For spawning isolated scanner containers if needed
     env_file:
       - .env
     depends_on:
@@ -105,6 +104,17 @@ services:
     command: zap.sh -daemon -host 0.0.0.0 -port 8080 -config api.key=${ZAP_API_KEY:-securemind-zap-api-key} -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
     ports:
       - "8080:8080"
+    networks:
+      - securemind_network
+
+  test_target:
+    build:
+      context: ./test_target
+      dockerfile: Dockerfile
+    container_name: securemind_test_target
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
     networks:
       - securemind_network
 
