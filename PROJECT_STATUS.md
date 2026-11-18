@@ -22,9 +22,9 @@ An extensive structural and code audit was conducted on the repository. The foun
 | **Infrastructure** | Environment Config | ✅ Implemented | `.env.example` and `.env` configured with sensible development defaults. |
 | **Backend Core** | Django Settings & Celery | ✅ Implemented | JWT auth, CORS, Celery tasks autodiscovery, DB wait command, SQLite test fallback. |
 | **Backend Core** | Database Migrations | ✅ Implemented | Generated and verified across all 10 apps (`apps/*/migrations/`). |
-| **Auth & RBAC** | Custom User & Roles | ✅ Implemented | Custom `User` model with 5 roles (`platform_admin`, `org_admin`, `analyst`, `developer`, `viewer`). |
-| **Auth & RBAC** | JWT Auth Endpoints | ✅ Implemented | Login, registration, token refresh, current profile, and org switching endpoints created. |
-| **Organizations** | Multi-Tenancy & RBAC | ✅ Implemented | `Organization`, `Project`, and `Membership` models and tenant-scoped permissions implemented. |
+| **Auth & RBAC** | Custom User & Roles | ✅ Implemented | Custom `User` model with 5 roles (`platform_admin`, `org_admin`, `analyst`, `developer`, `viewer`). Tested. |
+| **Auth & RBAC** | JWT Auth Endpoints | ✅ Implemented | Login, registration, token refresh, current profile, and org switching verified with 100% test pass. |
+| **Organizations** | Multi-Tenancy & RBAC | ✅ Implemented | `Organization`, `Project`, and `Membership` models, cross-tenant isolation, and RBAC verified via unit tests. |
 | **Asset Management** | Domain Registration | ✅ Implemented | Asset CRUD scoped to active organization. |
 | **Asset Management** | Ownership Verification | ⚠️ Partial | Verification service (`dnspython` DNS TXT and HTTP challenge) written; requires migration and integration testing with test server. |
 | **Security Controls** | SSRF Protection | ✅ Implemented | `TargetSafetyValidator` strictly blocks loopback (`127.0.0.1`), cloud metadata (`169.254.169.254`), and RFC1918 private IPs. Unit tested (100% pass). |
