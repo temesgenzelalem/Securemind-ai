@@ -178,6 +178,19 @@ CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes hard limit
+CELERY_BEAT_SCHEDULE = {
+    'run-scheduled-assessments': {
+        'task': 'apps.scans.tasks.run_scheduled_assessments',
+        'schedule': 600.0,  # Every 10 minutes
+    },
+}
+
+import sys
+if 'test' in sys.argv:
+    CELERY_TASK_ALWAYS_EAGER = True
+    CELERY_TASK_EAGER_PROPAGATES = True
+    CELERY_BROKER_URL = 'memory://'
+
 
 # Security Scanner Settings
 ZAP_API_URL = os.getenv('ZAP_API_URL', 'http://zap:8080')

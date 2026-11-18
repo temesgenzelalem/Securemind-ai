@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 from apps.core.models import BaseModel
 
 class Scan(BaseModel):
@@ -59,6 +60,7 @@ class Scan(BaseModel):
     completed_at = models.DateTimeField(null=True, blank=True)
     config_overrides = models.JSONField(default=dict, blank=True)
     error_message = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
 
     class Meta:
         verbose_name = 'Scan Assessment'
@@ -106,3 +108,112 @@ class ScannerExecution(BaseModel):
 
     def __str__(self):
         return f"{self.scanner_type} execution for Scan {self.scan_id} [{self.status}]"
+
+
+class ScanSchedule(BaseModel):
+    """
+    Recurring Assessment Schedule (FR-MON-001).
+    Allows organizations to configure periodic security audits for verified assets.
+    """
+    class Frequency(models.TextChoices):
+        DAILY = 'daily', 'Daily'
+        WEEKLY = 'weekly', 'Weekly'
+        MONTHLY = 'monthly', 'Monthly'
+
+    asset = models.ForeignKey(
+        'assets.Asset',
+        on_delete=models.CASCADE,
+        related_name='scan_schedules'
+    )
+    organization = models.ForeignKey(
+        'organizations.Organization',
+        on_delete=models.CASCADE,
+        related_name='scan_schedules'
+    )
+    scan_type = models.CharField(
+        max_length=40,
+        choices=Scan.ScanType.choices,
+        default=Scan.ScanType.PASSIVE
+    )
+    frequency = models.CharField(
+        max_length=20,
+        choices=Frequency.choices,
+        default=Frequency.WEEKLY
+    )
+    is_active = models.BooleanField(default=True)
+    last_run_at = models.DateTimeField(null=True, blank=True)
+    next_run_at = models.DateTimeField(default=timezone.now, db_index=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='created_schedules'
+    )
+
+    class Meta:
+        verbose_name = 'Scan Schedule'
+        verbose_name_plural = 'Scan Schedules'
+        ordering = ['next_run_at']
+
+    def __str__(self):
+        return f"{self.frequency.upper()} {self.scan_type} on {self.asset.domain}"
+
+
+class AssessmentNotification(BaseModel):
+    """
+    Assessment Alert & Notification (FR-MON-002, FR-MON-003).
+    Tracks scan completions and high/critical findings notifications.
+    """
+    class NotificationType(models.TextChoices):
+        SCAN_COMPLETED = 'scan_completed', 'Scan Completed'
+        CRITICAL_FINDING = 'critical_finding', 'Critical Finding Detected'
+        SCAN_FAILED = 'scan_failed', 'Scan Execution Failed'
+        SCHEDULE_TRIGGERED = 'schedule_triggered', 'Recurring Assessment Triggered'
+
+    class SeverityLevel(models.TextChoices):
+        INFO = 'info', 'Info'
+        WARNING = 'warning', 'Warning'
+        CRITICAL = 'critical', 'Critical'
+
+    organization = models.ForeignKey(
+        'organizations.Organization',
+        on_delete=models.CASCADE,
+        related_name='notifications'
+    )
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='notifications'
+    )
+    scan = models.ForeignKey(
+        Scan,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='notifications'
+    )
+    notification_type = models.CharField(
+        max_length=40,
+        choices=NotificationType.choices,
+        default=NotificationType.SCAN_COMPLETED
+    )
+    title = models.CharField(max_length=255)
+    message = models.TextField()
+    severity = models.CharField(
+        max_length=20,
+        choices=SeverityLevel.choices,
+        default=SeverityLevel.INFO
+    )
+    is_read = models.BooleanField(default=False)
+    details = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        verbose_name = 'Assessment Notification'
+        verbose_name_plural = 'Assessment Notifications'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"[{self.severity.upper()}] {self.title}"
+

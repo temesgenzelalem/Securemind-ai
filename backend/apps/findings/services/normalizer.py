@@ -12,6 +12,12 @@ class FindingNormalizerService:
     unified Finding and Evidence data structures, performing automated deduplication.
     """
     @staticmethod
+    def compute_fingerprint(title: str, affected_url: str, parameter: str = "") -> str:
+        """Computes deterministic SHA-256 fingerprint for deduplication and diffing."""
+        raw_key = f"{title.strip()}|{affected_url.strip()}|{parameter.strip()}"
+        return hashlib.sha256(raw_key.encode('utf-8')).hexdigest()
+
+    @staticmethod
     def normalize_zap_alerts(scan: Scan, raw_alerts: list[dict]) -> list[Finding]:
         severity_map = {
             'High': Finding.Severity.HIGH,

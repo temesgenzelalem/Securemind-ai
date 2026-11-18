@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from apps.scans.models import Scan, ScannerExecution
+from apps.scans.models import Scan, ScannerExecution, ScanSchedule, AssessmentNotification
 from apps.assets.models import Asset
 
 class ScannerExecutionSerializer(serializers.ModelSerializer):
@@ -31,3 +31,23 @@ class CreateScanSerializer(serializers.ModelSerializer):
         if not asset.is_authorized:
             raise serializers.ValidationError("Target asset has not verified ownership or authorization has expired.")
         return asset
+
+class ScanScheduleSerializer(serializers.ModelSerializer):
+    asset_domain = serializers.CharField(source='asset.domain', read_only=True)
+
+    class Meta:
+        model = ScanSchedule
+        fields = ('id', 'asset', 'asset_domain', 'organization', 'scan_type', 'frequency', 'is_active', 'last_run_at', 'next_run_at', 'created_at')
+        read_only_fields = ('id', 'organization', 'last_run_at', 'created_at')
+
+    def validate_asset(self, asset):
+        if not asset.is_authorized:
+            raise serializers.ValidationError("Cannot schedule scans for unverified or expired assets.")
+        return asset
+
+class AssessmentNotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AssessmentNotification
+        fields = ('id', 'organization', 'recipient', 'scan', 'notification_type', 'title', 'message', 'severity', 'is_read', 'details', 'created_at')
+        read_only_fields = ('id', 'organization', 'recipient', 'scan', 'notification_type', 'title', 'message', 'severity', 'details', 'created_at')
+

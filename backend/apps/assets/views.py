@@ -120,6 +120,19 @@ class AssetViewSet(viewsets.ModelViewSet):
         rule = serializer.save(asset=asset)
         return Response(ScopeRuleSerializer(rule).data, status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['get'])
+    def history(self, request, pk=None):
+        """Assessment history and finding progression for an asset (FR-MON-004)."""
+        asset = self.get_object()
+        from apps.scans.services.comparison import ScanComparisonService
+        history_data = ScanComparisonService.get_asset_history(str(asset.id))
+        return Response({
+            'asset_id': str(asset.id),
+            'domain': asset.domain,
+            'total_scans': len(history_data),
+            'history': history_data
+        }, status=status.HTTP_200_OK)
+
 class ScopeRuleViewSet(viewsets.ModelViewSet):
     serializer_class = ScopeRuleSerializer
     permission_classes = (permissions.IsAuthenticated, TenantObjectPermission)

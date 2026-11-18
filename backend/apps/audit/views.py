@@ -1,4 +1,5 @@
-from rest_framework import viewsets, permissions
+from rest_framework import viewsets, permissions, filters
+from django_filters.rest_framework import DjangoFilterBackend
 from apps.audit.models import AuditLog
 from apps.audit.serializers import AuditLogSerializer
 from apps.authentication.permissions import IsOrgAdmin
@@ -10,6 +11,11 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     """
     serializer_class = AuditLogSerializer
     permission_classes = (permissions.IsAuthenticated, IsOrgAdmin)
+    filter_backends = (DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter)
+    filterset_fields = ('action', 'target_type', 'actor')
+    search_fields = ('action', 'target_type', 'target_id', 'actor__email')
+    ordering_fields = ('created_at', 'action')
+    ordering = ('-created_at',)
 
     def get_queryset(self):
         user = self.request.user

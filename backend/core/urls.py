@@ -16,7 +16,9 @@ urlpatterns = [
     path('api/v1/assets/', include('apps.assets.urls')),
     path('api/v1/scans/', include('apps.scans.urls')),
     path('api/v1/findings/', include('apps.findings.urls')),
+    path('api/v1/agents/', include('apps.orchestrator.urls')),
     path('api/v1/remediation/', include('apps.remediation.urls')),
     path('api/v1/reports/', include('apps.reports.urls')),
+    path('api/v1/monitoring/', include('apps.scans.monitoring_urls')),
     path('api/v1/audit/', include('apps.audit.urls')),
 ]
