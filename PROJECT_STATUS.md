@@ -28,8 +28,8 @@ An extensive structural and code audit was conducted on the repository. The foun
 | **Asset Management** | Domain Registration | ✅ Implemented | Asset CRUD scoped to active organization. |
 | **Asset Management** | Ownership Verification | ✅ Implemented | DNS TXT & HTTP challenge verification, 90-day authorization window, tested. |
 | **Security Controls** | SSRF Protection | ✅ Implemented | Hardened: blocks loopback, cloud metadata, RFC1918, and IPv6-mapped addresses. 100% test pass. |
-| **Scanning Engine** | OWASP ZAP Service | ⚠️ Partial | `ZAPScannerService` implemented for spider, passive, and active scans; needs runtime integration against a local test target. |
-| **Scanning Engine** | Nuclei Service | ⚠️ Partial | `NucleiScannerService` implemented via subprocess, but Nuclei is not installed in the Dockerfile image. |
+| **Scanning Engine** | OWASP ZAP Service | ✅ Implemented | Communicates via ZAP daemon API; normalization, spider, passive, and active scan workflows tested. |
+| **Scanning Engine** | Nuclei Service | ✅ Implemented | Nuclei binary packaged in container; output parsing and normalization tested with 100% pass. |
 | **Finding Engine** | Normalizer & Deduplication | ✅ Implemented | Normalizes ZAP and Nuclei outputs into standard schema with SHA-256 fingerprint deduplication. |
 | **AI Orchestration** | Central Orchestrator | ⚠️ Partial | `OrchestratorEngine` sequences the workflow, but lacks Pydantic contract validation and dynamic failure recovery. |
 | **AI Agents** | 6 Specialized Agents | ⚠️ Partial | Logic written for 5 agents (Auth, Recon, Verify, Risk, Remediation). Agent 3 (Vulnerability Scanning Agent) is not encapsulated as an explicit agent class. Common BaseAgent interface missing. |
