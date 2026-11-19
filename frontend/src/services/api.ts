@@ -10,11 +10,17 @@ export const apiClient = axios.create({
   timeout: 15000,
 });
 
-// Helper: Ensure a valid token exists, auto-logging in as demo admin if needed
+// Production Safety Guard:
+// Silent auto-login is strictly prohibited in production environments or when NEXT_PUBLIC_ALLOW_DEMO_AUTO_LOGIN is not explicitly true.
+const IS_DEV_AUTO_LOGIN_ENABLED =
+  process.env.NODE_ENV !== "production" &&
+  process.env.NEXT_PUBLIC_ALLOW_DEMO_AUTO_LOGIN === "true";
+
+// Helper: Ensure a valid token exists (auto-logging in as demo admin ONLY when strictly configured for isolated dev)
 async function getOrInitAuthToken(): Promise<string | null> {
   if (typeof window === "undefined") return null;
   let token = localStorage.getItem("securemind_access_token");
-  if (!token) {
+  if (!token && IS_DEV_AUTO_LOGIN_ENABLED) {
     try {
       const resp = await axios.post(`${API_BASE_URL}/auth/login/`, {
         email: "admin@securemind.ai",
@@ -101,6 +107,8 @@ export const api = {
   auth: {
     login: (credentials: { email: string; password: string }) =>
       apiClient.post("/auth/login/", credentials),
+    logout: (refresh: string) =>
+      apiClient.post("/auth/logout/", { refresh }),
     register: (payload: any) => apiClient.post("/auth/register/", payload),
     me: () => apiClient.get("/auth/me/"),
     switchOrg: (organization_id: string) =>

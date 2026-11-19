@@ -17,6 +17,11 @@ class OrganizationViewSet(viewsets.ModelViewSet):
     serializer_class = OrganizationSerializer
     permission_classes = (permissions.IsAuthenticated, TenantObjectPermission)
 
+    def get_permissions(self):
+        if self.action in ('update', 'partial_update', 'destroy', 'members'):
+            return [permissions.IsAuthenticated(), IsOrgAdmin(), TenantObjectPermission()]
+        return [permissions.IsAuthenticated(), TenantObjectPermission()]
+
     def get_queryset(self):
         user = self.request.user
         if user.role == User.Role.PLATFORM_ADMIN or user.is_superuser:

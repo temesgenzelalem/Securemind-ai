@@ -19,6 +19,11 @@ class ScanViewSet(viewsets.ModelViewSet):
     serializer_class = ScanSerializer
     permission_classes = (permissions.IsAuthenticated, TenantObjectPermission)
 
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy', 'approve', 'cancel'):
+            return [permissions.IsAuthenticated(), IsSecurityAnalystOrAbove(), TenantObjectPermission()]
+        return [permissions.IsAuthenticated(), TenantObjectPermission()]
+
     def get_queryset(self):
         user = self.request.user
         org = user.current_organization

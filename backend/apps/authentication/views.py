@@ -117,3 +117,28 @@ class SwitchOrganizationView(views.APIView):
                 'slug': org.slug
             }
         }, status=status.HTTP_200_OK)
+
+class LogoutView(views.APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def post(self, request, *args, **kwargs):
+        refresh_token = request.data.get('refresh')
+        if not refresh_token:
+            return Response({'error': 'Refresh token is required for logout.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+            AuditLog.objects.create(
+                organization=request.user.current_organization,
+                actor=request.user,
+                action='user_logout',
+                target_type='User',
+                target_id=str(request.user.id),
+                ip_address=request.META.get('REMOTE_ADDR'),
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                details={'method': 'jwt_blacklist'}
+            )
+            return Response({'message': 'Successfully logged out and token invalidated.'}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+

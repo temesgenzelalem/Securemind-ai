@@ -5,7 +5,7 @@ from django.http import HttpResponse, Http404
 from apps.reports.models import Report
 from apps.reports.serializers import ReportSerializer, GenerateReportSerializer
 from apps.reports.services.pdf_generator import SecurityReportPDFGenerator
-from apps.authentication.permissions import TenantObjectPermission
+from apps.authentication.permissions import TenantObjectPermission, IsSecurityAnalystOrAbove
 from apps.audit.models import AuditLog
 
 class ReportViewSet(viewsets.ModelViewSet):
@@ -14,6 +14,11 @@ class ReportViewSet(viewsets.ModelViewSet):
     """
     serializer_class = ReportSerializer
     permission_classes = (permissions.IsAuthenticated, TenantObjectPermission)
+
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [permissions.IsAuthenticated(), IsSecurityAnalystOrAbove(), TenantObjectPermission()]
+        return [permissions.IsAuthenticated(), TenantObjectPermission()]
 
     def get_queryset(self):
         user = self.request.user

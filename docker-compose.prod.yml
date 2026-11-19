@@ -1,0 +1,139 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: securemind_postgres_prod
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-securemind_db}
+      POSTGRES_USER: ${POSTGRES_USER:-securemind_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-securemind_prod_password}
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-securemind_user} -d ${POSTGRES_DB:-securemind_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - securemind_prod_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: securemind_redis_prod
+    restart: always
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-""}
+    volumes:
+      - redis_prod_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - securemind_prod_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: securemind_backend_prod
+    restart: always
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
+             gunicorn core.wsgi:application --bind 0.0.0.0:8000 --workers 4 --threads 2 --timeout 120"
+    volumes:
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+    expose:
+      - "8000"
+    ports:
+      - "8001:8000"
+    env_file:
+      - .env
+    environment:
+      - DEBUG=False
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - securemind_prod_network
+
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: securemind_celery_worker_prod
+    restart: always
+    command: celery -A core worker -l INFO -E --concurrency=4
+    volumes:
+      - media_volume:/app/media
+    env_file:
+      - .env
+    environment:
+      - DEBUG=False
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    networks:
+      - securemind_prod_network
+
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: securemind_celery_beat_prod
+    restart: always
+    command: celery -A core beat -l INFO
+    env_file:
+      - .env
+    environment:
+      - DEBUG=False
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - securemind_prod_network
+
+  zap:
+    image: zaproxy/zap-stable:latest
+    container_name: securemind_zap_prod
+    restart: always
+    command: zap.sh -daemon -host 0.0.0.0 -port 8080 -config api.key=${ZAP_API_KEY:-securemind-zap-prod-key} -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
+    expose:
+      - "8080"
+    networks:
+      - securemind_prod_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: securemind_frontend_prod
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8001/api/v1}
+      - NEXT_PUBLIC_ALLOW_DEMO_AUTO_LOGIN=false
+    depends_on:
+      - backend
+    networks:
+      - securemind_prod_network
+
+volumes:
+  postgres_prod_data:
+  redis_prod_data:
+  static_volume:
+  media_volume:
+
+networks:
+  securemind_prod_network:
+    driver: bridge

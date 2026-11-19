@@ -18,6 +18,11 @@ class AssetViewSet(viewsets.ModelViewSet):
     serializer_class = AssetSerializer
     permission_classes = (permissions.IsAuthenticated, TenantObjectPermission)
 
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy', 'challenge', 'verify', 'scope_rules'):
+            return [permissions.IsAuthenticated(), IsSecurityAnalystOrAbove(), TenantObjectPermission()]
+        return [permissions.IsAuthenticated(), TenantObjectPermission()]
+
     def get_queryset(self):
         user = self.request.user
         org = user.current_organization

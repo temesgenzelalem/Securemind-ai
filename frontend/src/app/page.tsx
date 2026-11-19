@@ -50,19 +50,8 @@ export default function Dashboard() {
       const res = await api.auth.me();
       setCurrentUser(res.data);
     } catch (e) {
-      console.warn("Session check returned error, initializing demo admin.");
-      try {
-        const loginRes = await api.auth.login({
-          email: "admin@securemind.ai",
-          password: "SecureEnterprisePassword2026!",
-        });
-        localStorage.setItem("securemind_access_token", loginRes.data.access);
-        localStorage.setItem("securemind_refresh_token", loginRes.data.refresh);
-        const meRes = await api.auth.me();
-        setCurrentUser(meRes.data);
-      } catch (loginErr) {
-        console.warn("Auto-login failed:", loginErr);
-      }
+      // Unauthenticated visitor: Do not silently log in as super admin.
+      setCurrentUser(null);
     }
   };
 

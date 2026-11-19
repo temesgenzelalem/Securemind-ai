@@ -44,6 +44,11 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         fields = ('id', 'email', 'password', 'first_name', 'last_name', 'role', 'organization_name', 'created_at')
         read_only_fields = ('id', 'created_at')
 
+    def validate_role(self, value):
+        if value == User.Role.PLATFORM_ADMIN:
+            raise serializers.ValidationError("Platform Administrator accounts cannot be self-registered.")
+        return value
+
     def create(self, validated_data):
         org_name = validated_data.pop('organization_name', '').strip()
         password = validated_data.pop('password')
