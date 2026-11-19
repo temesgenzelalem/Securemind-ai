@@ -95,19 +95,25 @@ class Command(BaseCommand):
         )
 
         # 4. Completed Scan with Findings & Evidence
-        completed_scan, _ = Scan.objects.get_or_create(
+        completed_scan = Scan.objects.filter(
             asset=practice_asset,
             organization=org,
             scan_type=Scan.ScanType.CONTROLLED_ACTIVE,
-            defaults={
-                'status': Scan.Status.COMPLETED,
-                'is_approved': True,
-                'approved_by': user,
-                'created_by': user,
-                'started_at': timezone.now() - timedelta(hours=2),
-                'completed_at': timezone.now() - timedelta(hours=1, minutes=45),
-            }
-        )
+            status=Scan.Status.COMPLETED
+        ).first()
+
+        if not completed_scan:
+            completed_scan = Scan.objects.create(
+                asset=practice_asset,
+                organization=org,
+                scan_type=Scan.ScanType.CONTROLLED_ACTIVE,
+                status=Scan.Status.COMPLETED,
+                is_approved=True,
+                approved_by=user,
+                created_by=user,
+                started_at=timezone.now() - timedelta(hours=2),
+                completed_at=timezone.now() - timedelta(hours=1, minutes=45),
+            )
 
         ScannerExecution.objects.get_or_create(
             scan=completed_scan,
@@ -224,76 +230,74 @@ class Command(BaseCommand):
         )
 
         # 5. Pending Scan in Authorization Review (Demonstrates Human-in-the-Loop)
-        Scan.objects.get_or_create(
-            asset=practice_asset,
-            organization=org,
-            scan_type=Scan.ScanType.COMPREHENSIVE,
-            defaults={
-                'status': Scan.Status.AUTHORIZATION_REVIEW,
-                'requires_approval': True,
-                'is_approved': False,
-                'created_by': user,
-            }
-        )
+        if not Scan.objects.filter(asset=practice_asset, organization=org, scan_type=Scan.ScanType.COMPREHENSIVE).exists():
+            Scan.objects.create(
+                asset=practice_asset,
+                organization=org,
+                scan_type=Scan.ScanType.COMPREHENSIVE,
+                status=Scan.Status.AUTHORIZATION_REVIEW,
+                requires_approval=True,
+                is_approved=False,
+                created_by=user,
+            )
 
         # 6. Recurring Schedule
-        ScanSchedule.objects.get_or_create(
-            asset=practice_asset,
-            organization=org,
-            defaults={
-                'scan_type': Scan.ScanType.PASSIVE,
-                'frequency': ScanSchedule.Frequency.WEEKLY,
-                'created_by': user,
-                'is_active': True,
-                'next_run_at': timezone.now() + timedelta(days=6)
-            }
-        )
+        if not ScanSchedule.objects.filter(asset=practice_asset, organization=org).exists():
+            ScanSchedule.objects.create(
+                asset=practice_asset,
+                organization=org,
+                scan_type=Scan.ScanType.PASSIVE,
+                frequency=ScanSchedule.Frequency.WEEKLY,
+                created_by=user,
+                is_active=True,
+                next_run_at=timezone.now() + timedelta(days=6)
+            )
 
         # 7. Notifications
-        AssessmentNotification.objects.get_or_create(
-            organization=org,
-            recipient=user,
-            title='Security Assessment Completed: localhost:9090',
-            defaults={
-                'notification_type': AssessmentNotification.NotificationType.SCAN_COMPLETED,
-                'message': 'Controlled active assessment finished with 2 confirmed findings.',
-                'severity': AssessmentNotification.SeverityLevel.INFO,
-                'scan': completed_scan,
-                'is_read': False
-            }
-        )
+        if not AssessmentNotification.objects.filter(organization=org, recipient=user, title='Security Assessment Completed: localhost:9090').exists():
+            AssessmentNotification.objects.create(
+                organization=org,
+                recipient=user,
+                title='Security Assessment Completed: localhost:9090',
+                notification_type=AssessmentNotification.NotificationType.SCAN_COMPLETED,
+                message='Controlled active assessment finished with 2 confirmed findings.',
+                severity=AssessmentNotification.SeverityLevel.INFO,
+                scan=completed_scan,
+                is_read=False
+            )
 
-        AssessmentNotification.objects.get_or_create(
-            organization=org,
-            recipient=user,
-            title='High/Critical Vulnerabilities Detected on localhost:9090',
-            defaults={
-                'notification_type': AssessmentNotification.NotificationType.CRITICAL_FINDING,
-                'message': 'Discovered High severity Reflected XSS requiring immediate remediation.',
-                'severity': AssessmentNotification.SeverityLevel.CRITICAL,
-                'scan': completed_scan,
-                'is_read': False
-            }
-        )
+        if not AssessmentNotification.objects.filter(organization=org, recipient=user, title='High/Critical Vulnerabilities Detected on localhost:9090').exists():
+            AssessmentNotification.objects.create(
+                organization=org,
+                recipient=user,
+                title='High/Critical Vulnerabilities Detected on localhost:9090',
+                notification_type=AssessmentNotification.NotificationType.CRITICAL_FINDING,
+                message='Discovered High severity Reflected XSS requiring immediate remediation.',
+                severity=AssessmentNotification.SeverityLevel.CRITICAL,
+                scan=completed_scan,
+                is_read=False
+            )
 
         # 8. Audit Log entries
-        AuditLog.objects.get_or_create(
-            organization=org,
-            actor=user,
-            action='asset_created',
-            target_type='Asset',
-            target_id=str(practice_asset.id),
-            defaults={'details': {'domain': practice_asset.domain}}
-        )
+        if not AuditLog.objects.filter(organization=org, actor=user, action='asset_created', target_id=str(practice_asset.id)).exists():
+            AuditLog.objects.create(
+                organization=org,
+                actor=user,
+                action='asset_created',
+                target_type='Asset',
+                target_id=str(practice_asset.id),
+                details={'domain': practice_asset.domain}
+            )
 
-        AuditLog.objects.get_or_create(
-            organization=org,
-            actor=user,
-            action='scan_completed',
-            target_type='Scan',
-            target_id=str(completed_scan.id),
-            defaults={'details': {'total_findings': 2, 'scan_type': 'controlled_active'}}
-        )
+        if not AuditLog.objects.filter(organization=org, actor=user, action='scan_completed', target_id=str(completed_scan.id)).exists():
+            AuditLog.objects.create(
+                organization=org,
+                actor=user,
+                action='scan_completed',
+                target_type='Scan',
+                target_id=str(completed_scan.id),
+                details={'total_findings': 2, 'scan_type': 'controlled_active'}
+            )
 
         self.stdout.write(self.style.SUCCESS("Demo data successfully seeded!"))
         self.stdout.write(self.style.SUCCESS("Administrator: admin@securemind.ai / SecureAdmin2026!"))
