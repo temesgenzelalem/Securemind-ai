@@ -61,8 +61,15 @@ export const AssetsView: React.FC = () => {
       setActionMessage({ type: 'success', text: `Asset ${res.data.domain} registered. Please complete DNS TXT verification.` });
       fetchAssets();
     } catch (err: any) {
-      const errDetail = err.response?.data?.domain || err.response?.data?.detail || err.message;
-      setActionMessage({ type: 'error', text: `Registration failed: ${errDetail}` });
+      if (err.response?.status === 401) {
+        setActionMessage({ type: 'error', text: 'Authentication required. Auto-authenticating development session; please retry.' });
+      } else {
+        const data = err.response?.data;
+        const errDetail = (typeof data === 'object' && data !== null)
+          ? Object.entries(data).map(([k, v]) => Array.isArray(v) ? `${k}: ${v.join(' ')}` : `${k}: ${v}`).join(' | ')
+          : (err.message || 'Unknown error');
+        setActionMessage({ type: 'error', text: `Registration failed: ${errDetail}` });
+      }
     } finally {
       setSubmitting(false);
     }

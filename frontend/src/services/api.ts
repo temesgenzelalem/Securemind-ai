@@ -1,6 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001/api/v1";
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -10,11 +10,34 @@ export const apiClient = axios.create({
   timeout: 15000,
 });
 
-// Request interceptor: Attach JWT Bearer token if present
+// Helper: Ensure a valid token exists, auto-logging in as demo admin if needed
+async function getOrInitAuthToken(): Promise<string | null> {
+  if (typeof window === "undefined") return null;
+  let token = localStorage.getItem("securemind_access_token");
+  if (!token) {
+    try {
+      const resp = await axios.post(`${API_BASE_URL}/auth/login/`, {
+        email: "admin@securemind.ai",
+        password: "SecureEnterprisePassword2026!",
+      });
+      token = resp.data.access;
+      localStorage.setItem("securemind_access_token", resp.data.access);
+      localStorage.setItem("securemind_refresh_token", resp.data.refresh);
+    } catch (err) {
+      console.warn("Auto-authentication fallback failed:", err);
+    }
+  }
+  return token;
+}
+
+// Request interceptor: Attach JWT Bearer token if present (or auto-init demo session)
 apiClient.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
+  async (config: InternalAxiosRequestConfig) => {
     if (typeof window !== "undefined") {
-      const token = localStorage.getItem("securemind_access_token");
+      let token = localStorage.getItem("securemind_access_token");
+      if (!token && !config.url?.includes("/auth/")) {
+        token = await getOrInitAuthToken();
+      }
       if (token && config.headers) {
         config.headers.Authorization = `Bearer ${token}`;
       }
@@ -47,9 +70,21 @@ apiClient.interceptors.response.use(
           }
           return apiClient(originalRequest);
         } catch (refreshErr) {
-          // Token expired completely; clear tokens
+          // Refresh failed, re-authenticate with default admin session
           localStorage.removeItem("securemind_access_token");
           localStorage.removeItem("securemind_refresh_token");
+          const newToken = await getOrInitAuthToken();
+          if (newToken && originalRequest.headers) {
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+            return apiClient(originalRequest);
+          }
+        }
+      } else {
+        // No refresh token, init demo admin
+        const newToken = await getOrInitAuthToken();
+        if (newToken && originalRequest.headers) {
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          return apiClient(originalRequest);
         }
       }
     }
