@@ -10,6 +10,7 @@ export const AssessmentsView: React.FC = () => {
   const [selectedAssetId, setSelectedAssetId] = useState("");
   const [selectedProfile, setSelectedProfile] = useState("passive");
   const [launching, setLaunching] = useState(false);
+  const [launchError, setLaunchError] = useState<string | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -22,7 +23,8 @@ export const AssessmentsView: React.FC = () => {
       const assetList = assetsRes.data.results || assetsRes.data || [];
       setAssets(assetList);
       if (assetList.length > 0 && !selectedAssetId) {
-        setSelectedAssetId(assetList[0].id);
+        const verifiedAsset = assetList.find((a: any) => a.is_authorized || a.verification_status === "verified");
+        setSelectedAssetId(verifiedAsset ? verifiedAsset.id : assetList[0].id);
       }
     } catch (err: any) {
       console.warn("Could not fetch scans from live API, loading preview state.");
@@ -49,6 +51,7 @@ export const AssessmentsView: React.FC = () => {
     e.preventDefault();
     if (!selectedAssetId) return;
     setLaunching(true);
+    setLaunchError(null);
     try {
       await api.scans.create({
         asset: selectedAssetId,
@@ -57,7 +60,11 @@ export const AssessmentsView: React.FC = () => {
       setShowLaunchModal(false);
       fetchData();
     } catch (err: any) {
-      alert("Failed to start scan: " + (err.response?.data?.asset || err.message));
+      const data = err.response?.data;
+      const errDetail = typeof data === 'object' && data !== null
+        ? Object.entries(data).map(([k, v]) => Array.isArray(v) ? `${k}: ${v.join(' ')}` : `${k}: ${v}`).join(' | ')
+        : (err.message || 'Unknown error');
+      setLaunchError(`Failed to start scan: ${errDetail}`);
     } finally {
       setLaunching(false);
     }
@@ -175,17 +182,43 @@ export const AssessmentsView: React.FC = () => {
                 ) : (
                   <select 
                     value={selectedAssetId} 
-                    onChange={(e) => setSelectedAssetId(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedAssetId(e.target.value);
+                      setLaunchError(null);
+                    }}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200"
                   >
-                    {assets.map((ast) => (
-                      <option key={ast.id} value={ast.id}>
-                        {ast.domain} ({ast.verification_status})
-                      </option>
-                    ))}
+                    {assets.map((ast) => {
+                      const isAuth = ast.is_authorized || ast.verification_status === "verified";
+                      return (
+                        <option key={ast.id} value={ast.id}>
+                          {ast.domain} {isAuth ? "✓ [Verified]" : "⚠️ [Pending Verification]"}
+                        </option>
+                      );
+                    })}
                   </select>
                 )}
               </div>
+
+              {(() => {
+                const currentAsset = assets.find((a) => a.id === selectedAssetId);
+                const isCurrentAuthorized = currentAsset?.is_authorized || currentAsset?.verification_status === "verified";
+                if (currentAsset && !isCurrentAuthorized) {
+                  return (
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-400 text-[11px] leading-relaxed">
+                      ⚠️ Target asset <strong>{currentAsset.domain}</strong> has not completed domain ownership verification.
+                      Please complete the DNS or HTTP challenge in <strong>Applications & Assets</strong> before launching an assessment.
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
+              {launchError && (
+                <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-lg text-rose-400 text-[11px]">
+                  {launchError}
+                </div>
+              )}
 
               <div>
                 <label className="text-slate-400 font-semibold block mb-1">Scan Profile:</label>
@@ -229,13 +262,19 @@ export const AssessmentsView: React.FC = () => {
                 >
                   Cancel
                 </button>
-                <button 
-                  type="submit"
-                  disabled={launching || assets.length === 0}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-semibold disabled:opacity-50"
-                >
-                  {launching ? "Dispatching..." : "Start Assessment"}
-                </button>
+                {(() => {
+                  const currentAsset = assets.find((a) => a.id === selectedAssetId);
+                  const isCurrentAuthorized = currentAsset?.is_authorized || currentAsset?.verification_status === "verified";
+                  return (
+                    <button 
+                      type="submit"
+                      disabled={launching || assets.length === 0 || !isCurrentAuthorized}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {launching ? "Dispatching..." : "Start Assessment"}
+                    </button>
+                  );
+                })()}
               </div>
             </form>
           </div>
