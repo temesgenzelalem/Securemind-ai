@@ -186,10 +186,12 @@ CELERY_BEAT_SCHEDULE = {
 }
 
 import sys
-if 'test' in sys.argv:
+IS_CELERY_EAGER = os.getenv('CELERY_TASK_ALWAYS_EAGER', 'False').lower() in ('true', '1', 'yes') or ('test' in sys.argv)
+if IS_CELERY_EAGER:
     CELERY_TASK_ALWAYS_EAGER = True
     CELERY_TASK_EAGER_PROPAGATES = True
     CELERY_BROKER_URL = 'memory://'
+    CELERY_RESULT_BACKEND = 'cache+memory://'
 
 
 # Security Scanner Settings

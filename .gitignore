@@ -65,3 +65,4 @@ celerybeat-schedule
 celerybeat.pid
 zap_reports/
 nuclei_output/
+*.pdf
