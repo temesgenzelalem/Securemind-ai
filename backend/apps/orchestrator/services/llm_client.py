@@ -89,8 +89,17 @@ class LLMClient:
     Unified LLM Client that selects provider based on environment configuration.
     """
     def __init__(self):
-        gemini_key = getattr(settings, 'GEMINI_API_KEY', '') or os.getenv('GEMINI_API_KEY', '')
-        model_name = getattr(settings, 'AI_DEFAULT_MODEL', 'gemini-2.5-flash')
+        gemini_key = ""
+        model_name = "gemini-2.5-flash"
+        try:
+            gemini_key = getattr(settings, 'GEMINI_API_KEY', '')
+            model_name = getattr(settings, 'AI_DEFAULT_MODEL', 'gemini-2.5-flash')
+        except Exception:
+            pass
+        if not gemini_key:
+            gemini_key = os.getenv('GEMINI_API_KEY', '')
+        if not model_name:
+            model_name = os.getenv('AI_DEFAULT_MODEL', 'gemini-2.5-flash')
 
         if gemini_key and gemini_key != 'your-gemini-api-key-here':
             self.provider = GeminiLLMProvider(api_key=gemini_key, model_name=model_name)
