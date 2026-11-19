@@ -2,6 +2,7 @@ import ipaddress
 import socket
 import logging
 from datetime import timedelta
+from urllib.parse import urlparse, urljoin
 
 try:
     import requests
@@ -74,7 +75,10 @@ class AssetVerificationService:
     Executes DNS-based or HTTP-based domain ownership verification.
     """
     @staticmethod
-    def verify_challenge(challenge: AuthorizationChallenge) -> tuple[bool, str]:
+    def verify_challenge(challenge) -> tuple[bool, str]:
+        if not isinstance(challenge, AuthorizationChallenge):
+            challenge = AuthorizationChallenge.objects.select_related('asset').get(id=challenge)
+
         asset = challenge.asset
         challenge.last_attempt_at = timezone.now()
 
@@ -143,17 +147,43 @@ class AssetVerificationService:
         expected_token = challenge.token.strip()
 
         try:
-            response = requests.get(
-                url,
-                timeout=10,
-                headers={'User-Agent': 'SecureMind-AI-Verifier/1.0'},
-                allow_redirects=True
-            )
+            curr_url = url
+            response = None
+            max_redirects = 3
+
+            for _ in range(max_redirects + 1):
+                parsed = urlparse(curr_url)
+                if parsed.scheme not in ('http', 'https'):
+                    return False, f"Prohibited URL scheme: {parsed.scheme}"
+                if not parsed.hostname:
+                    return False, f"Invalid URL target: {curr_url}"
+
+                # Strict SSRF re-validation on every redirect hop
+                TargetSafetyValidator.validate_target_safety(parsed.hostname)
+
+                response = requests.get(
+                    curr_url,
+                    timeout=10,
+                    headers={'User-Agent': 'SecureMind-AI-Verifier/1.0'},
+                    allow_redirects=False
+                )
+
+                if getattr(response, 'is_redirect', False) and 'Location' in getattr(response, 'headers', {}):
+                    redirect_url = urljoin(curr_url, response.headers['Location'])
+                    curr_url = redirect_url
+                    continue
+                break
+
+            if response is None:
+                return False, "Failed to receive HTTP response."
+
             content = response.text.strip()
             if response.status_code == 200 and expected_token in content:
                 return AssetVerificationService._mark_verified(challenge)
             else:
-                error_msg = f"HTTP challenge failed. URL '{url}' responded with status {response.status_code}. Content does not match token."
+                error_msg = f"HTTP challenge failed. URL '{curr_url}' responded with status {response.status_code}. Content does not match token."
+        except SecurityScopeError as e:
+            error_msg = f"SSRF Protection: Redirect blocked to unsafe destination: {str(e)}"
         except requests.RequestException as e:
             error_msg = f"Failed to fetch HTTP verification file at '{url}': {str(e)}"
 

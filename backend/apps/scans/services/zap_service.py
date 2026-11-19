@@ -23,13 +23,26 @@ class ZAPScannerService:
         except requests.RequestException:
             return False
 
+    def set_target_scope(self, target_url: str):
+        """Sets target URL in ZAP context scope to prevent out-of-scope crawling and redirects."""
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(target_url)
+            regex = f"^{parsed.scheme}://{parsed.netloc}.*$"
+            params = {'apikey': self.api_key, 'contextName': 'Default Context', 'regex': regex}
+            requests.get(f"{self.base_url}/JSON/context/action/includeInContext/", params=params, timeout=5)
+        except Exception as e:
+            logger.warning(f"Failed to configure ZAP target scope: {e}")
+
     def start_spider(self, target_url: str, max_children: int = 20) -> str:
-        """Starts a spidering task against the target URL."""
+        """Starts a spidering task strictly within target URL scope."""
+        self.set_target_scope(target_url)
         params = {
             'apikey': self.api_key,
             'url': target_url,
             'maxChildren': max_children,
-            'recurse': 'true'
+            'recurse': 'true',
+            'inScopeOnly': 'true'
         }
         resp = requests.get(f"{self.base_url}/JSON/spider/action/scan/", params=params, timeout=10)
         data = resp.json()

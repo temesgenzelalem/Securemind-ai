@@ -117,4 +117,19 @@ export const api = {
       apiClient.post("/reports/", { scan: scanId, report_type }),
     downloadUrl: (reportId: string) => `${API_BASE_URL}/reports/${reportId}/download/`,
   },
+
+  // AI Agent Orchestration Telemetry
+  agents: {
+    listExecutions: (params?: { scan?: string; agent_name?: string }) =>
+      apiClient.get("/agents/executions/", { params }),
+    listWorkflowStates: () => apiClient.get("/agents/workflow-states/"),
+  },
+
+  // Organizations & Team
+  organizations: {
+    list: () => apiClient.get("/organizations/"),
+    getMembers: (orgId: string) => apiClient.get(`/organizations/${orgId}/members/`),
+    inviteMember: (orgId: string, payload: { email: string; role: string }) =>
+      apiClient.post(`/organizations/${orgId}/members/`, payload),
+  },
 };

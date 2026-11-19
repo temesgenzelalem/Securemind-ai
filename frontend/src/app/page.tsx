@@ -7,6 +7,9 @@ import { AssetsView } from "@/components/views/AssetsView";
 import { AssessmentsView } from "@/components/views/AssessmentsView";
 import { FindingsView } from "@/components/views/FindingsView";
 import { RemediationView } from "@/components/views/RemediationView";
+import { ReportsView } from "@/components/views/ReportsView";
+import { AIAnalysisView } from "@/components/views/AIAnalysisView";
+import { TeamView } from "@/components/views/TeamView";
 import { Bell, Shield, ChevronDown, UserCircle } from "lucide-react";
 
 export default function Dashboard() {
@@ -25,8 +28,11 @@ export default function Dashboard() {
       case "remediation":
         return <RemediationView />;
       case "ai-analysis":
+        return <AIAnalysisView />;
       case "reports":
+        return <ReportsView />;
       case "team":
+        return <TeamView />;
       case "settings":
       default:
         return (

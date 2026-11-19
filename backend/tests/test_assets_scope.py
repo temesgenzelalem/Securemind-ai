@@ -128,3 +128,30 @@ class AssetAndScopeTests(TestCase):
             with self.assertRaises(SecurityScopeError) as ctx:
                 TargetSafetyValidator.validate_target_safety('malicious-ipv6.com')
             self.assertIn('prohibited loopback address', str(ctx.exception))
+
+    @override_settings(ALLOW_PRIVATE_IP_SCANS=False)
+    def test_http_challenge_blocks_ssrf_redirect(self):
+        asset = Asset.objects.create(
+            organization=self.org,
+            name='Redirect Target',
+            domain='redirect-test.com',
+            base_url='http://redirect-test.com',
+            verification_status=Asset.VerificationStatus.PENDING
+        )
+        challenge = AuthorizationChallenge.objects.create(
+            asset=asset,
+            challenge_type=AuthorizationChallenge.ChallengeType.HTTP_TOKEN,
+            token='secret-token-123',
+            expires_at=timezone.now() + timedelta(days=1)
+        )
+        
+        mock_redirect = MagicMock()
+        mock_redirect.is_redirect = True
+        mock_redirect.headers = {'Location': 'http://169.254.169.254/latest/meta-data/'}
+        
+        with patch('apps.assets.services.verifier.TargetSafetyValidator.validate_target_safety') as mock_val, \
+             patch('apps.assets.services.verifier.requests.get', return_value=mock_redirect):
+            mock_val.side_effect = [None, SecurityScopeError("Target IP resolves to prohibited cloud metadata service")]
+            success, msg = AssetVerificationService.verify_challenge(challenge.id)
+            self.assertFalse(success)
+            self.assertIn("SSRF Protection: Redirect blocked to unsafe destination", msg)
