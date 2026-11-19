@@ -8,7 +8,7 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
 os.environ['USE_SQLITE'] = 'True'
 django.setup()
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 from rest_framework import status
 from apps.authentication.models import User
@@ -122,6 +122,7 @@ class AssetAndScopeTests(TestCase):
         )
         self.assertFalse(asset.is_authorized)
 
+    @override_settings(ALLOW_PRIVATE_IP_SCANS=False)
     def test_ipv6_mapped_ssrf_blocking(self):
         with patch('socket.getaddrinfo', return_value=[(None, None, None, None, ('::ffff:127.0.0.1', 80))]):
             with self.assertRaises(SecurityScopeError) as ctx:

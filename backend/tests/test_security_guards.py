@@ -1,6 +1,7 @@
 import os
 import unittest
 import hashlib
+from django.test import TestCase, override_settings
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
 try:
@@ -11,7 +12,8 @@ except Exception:
 
 from apps.assets.services.verifier import TargetSafetyValidator, SecurityScopeError
 
-class TestSecurityGuards(unittest.TestCase):
+@override_settings(ALLOW_PRIVATE_IP_SCANS=False)
+class TestSecurityGuards(TestCase):
     """
     Validates deterministic security, SSRF protection, and scope enforcement rules (NFR-SEC-013).
     """
