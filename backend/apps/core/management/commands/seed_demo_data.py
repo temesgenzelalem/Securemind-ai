@@ -28,10 +28,34 @@ class Command(BaseCommand):
                 'is_superuser': True,
             }
         )
-        user.set_password('SecureAdmin2026!')
+        user.set_password('SecureEnterprisePassword2026!')
         user.save()
 
-        # Developer User
+        # 2. Organization Administrator User
+        org_admin_user, _ = User.objects.get_or_create(
+            email='orgadmin@securemind.ai',
+            defaults={
+                'first_name': 'Morgan',
+                'last_name': 'Reed',
+                'role': User.Role.ORG_ADMIN,
+            }
+        )
+        org_admin_user.set_password('SecureEnterprisePassword2026!')
+        org_admin_user.save()
+
+        # 3. Security Analyst User
+        analyst_user, _ = User.objects.get_or_create(
+            email='analyst@securemind.ai',
+            defaults={
+                'first_name': 'Elena',
+                'last_name': 'Rostova',
+                'role': User.Role.SECURITY_ANALYST,
+            }
+        )
+        analyst_user.set_password('SecureEnterprisePassword2026!')
+        analyst_user.save()
+
+        # 4. Developer User
         dev_user, _ = User.objects.get_or_create(
             email='dev@securemind.ai',
             defaults={
@@ -40,10 +64,22 @@ class Command(BaseCommand):
                 'role': User.Role.DEVELOPER,
             }
         )
-        dev_user.set_password('DevPassword2026!')
+        dev_user.set_password('SecureEnterprisePassword2026!')
         dev_user.save()
 
-        # 2. Organization
+        # 5. Viewer User
+        viewer_user, _ = User.objects.get_or_create(
+            email='viewer@securemind.ai',
+            defaults={
+                'first_name': 'Jordan',
+                'last_name': 'Lee',
+                'role': User.Role.VIEWER,
+            }
+        )
+        viewer_user.set_password('SecureEnterprisePassword2026!')
+        viewer_user.save()
+
+        # 6. Organization
         org, _ = Organization.objects.get_or_create(
             slug='acme-cyber-defense',
             defaults={
@@ -53,12 +89,14 @@ class Command(BaseCommand):
         )
 
         Membership.objects.get_or_create(user=user, organization=org, defaults={'role': Membership.OrgRole.ADMIN})
+        Membership.objects.get_or_create(user=org_admin_user, organization=org, defaults={'role': Membership.OrgRole.ADMIN})
+        Membership.objects.get_or_create(user=analyst_user, organization=org, defaults={'role': Membership.OrgRole.MEMBER})
         Membership.objects.get_or_create(user=dev_user, organization=org, defaults={'role': Membership.OrgRole.MEMBER})
+        Membership.objects.get_or_create(user=viewer_user, organization=org, defaults={'role': Membership.OrgRole.MEMBER})
 
-        user.current_organization = org
-        user.save(update_fields=['current_organization'])
-        dev_user.current_organization = org
-        dev_user.save(update_fields=['current_organization'])
+        for u in [user, org_admin_user, analyst_user, dev_user, viewer_user]:
+            u.current_organization = org
+            u.save(update_fields=['current_organization'])
 
         # 3. Verified Practice Asset
         practice_asset, _ = Asset.objects.get_or_create(
@@ -299,6 +337,10 @@ class Command(BaseCommand):
                 details={'total_findings': 2, 'scan_type': 'controlled_active'}
             )
 
-        self.stdout.write(self.style.SUCCESS("Demo data successfully seeded!"))
-        self.stdout.write(self.style.SUCCESS("Administrator: admin@securemind.ai / SecureAdmin2026!"))
-        self.stdout.write(self.style.SUCCESS("Developer: dev@securemind.ai / DevPassword2026!"))
+        self.stdout.write(self.style.SUCCESS("Demo data successfully seeded for all 5 RBAC roles!"))
+        self.stdout.write(self.style.SUCCESS("All demo accounts share password: SecureEnterprisePassword2026!"))
+        self.stdout.write(self.style.SUCCESS("- Platform Admin: admin@securemind.ai"))
+        self.stdout.write(self.style.SUCCESS("- Org Admin: orgadmin@securemind.ai"))
+        self.stdout.write(self.style.SUCCESS("- Security Analyst: analyst@securemind.ai"))
+        self.stdout.write(self.style.SUCCESS("- Developer: dev@securemind.ai"))
+        self.stdout.write(self.style.SUCCESS("- Viewer: viewer@securemind.ai"))
